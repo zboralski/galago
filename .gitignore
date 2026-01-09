@@ -1,0 +1,9 @@
+samples/
+*.so
+testdata/golden/*.txt
+/galago
+
+# Allow demo directory files
+!demo/*.so
+!demo/*.mp4
+!demo/*.gif
