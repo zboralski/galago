@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/zboralski/galago/internal/hipaa"
+
 	"github.com/zboralski/galago/internal/emulator"
 	"github.com/zboralski/galago/internal/stubs"
 )
@@ -90,6 +92,25 @@ func captureKey(key CapturedKey) {
 // CaptureKeyDirect is an exported function to capture a key directly from vtable hooks.
 // This is used by the runTrace code in main.go to capture keys from vtable dispatch.
 func CaptureKeyDirect(value, source string, address uint64) {
+	// HIPAA compliance: Check for PHI in captured key
+	// As a physician, I must ensure that no patient information is captured as a key.
+	if hipaa.SessionEncryptor != nil && hipaa.SessionEncryptor.GetDetector().ContainsPHI(value) {
+		hipaa.SessionEncryptor.GetAuditor().LogPHIDetected("Key capture direct", value)
+		return // Skip capturing PHI
+	}
+
+	// Encrypt the key for storage
+	encryptedValue := value
+	if hipaa.SessionEncryptor != nil {
+		var err error
+		encryptedValue, err = hipaa.SessionEncryptor.EncryptString(value)
+		if err != nil {
+			// If encryption fails, log and skip
+			stubs.DefaultRegistry.Log("setter-error", source, fmt.Sprintf("encryption failed: %v", err))
+			return
+		}
+	}
+
 	// Detect key type from source
 	keyType := "unknown"
 	sourceLower := strings.ToLower(source)
@@ -102,7 +123,7 @@ func CaptureKeyDirect(value, source string, address uint64) {
 	}
 
 	captureKey(CapturedKey{
-		Value:     value,
+		Value:     encryptedValue,
 		Source:    source,
 		Address:   address,
 		RiskLevel: "critical",
@@ -390,8 +411,29 @@ func makeXXTeaKeyHook(funcName string) func(*emulator.Emulator) bool {
 		}
 
 		if key != "" {
+			// HIPAA compliance: Check for PHI in captured key
+			// As a physician, I must ensure that no patient information is captured as a key.
+			if hipaa.SessionEncryptor != nil && hipaa.SessionEncryptor.GetDetector().ContainsPHI(key) {
+				hipaa.SessionEncryptor.GetAuditor().LogPHIDetected("Key capture", key)
+				stubs.ReturnFromStub(emu)
+				return false // Skip capturing PHI
+			}
+
+			// Encrypt the key for storage
+			encryptedKey := key
+			if hipaa.SessionEncryptor != nil {
+				var err error
+				encryptedKey, err = hipaa.SessionEncryptor.EncryptString(key)
+				if err != nil {
+					// If encryption fails, log and skip
+					stubs.DefaultRegistry.Log("setter-error", funcName, fmt.Sprintf("encryption failed: %v", err))
+					stubs.ReturnFromStub(emu)
+					return false
+				}
+			}
+
 			captureKey(CapturedKey{
-				Value:     key,
+				Value:     encryptedKey,
 				Source:    funcName,
 				Address:   emu.PC(),
 				KeyType:   "xxtea",
@@ -401,13 +443,23 @@ func makeXXTeaKeyHook(funcName string) func(*emulator.Emulator) bool {
 			// Try to capture signature from X3 (member method: X3=sign_ptr, X4=sign_len)
 			if x3 > 0x1000 && x4 > 0 && x4 < 256 {
 				if sign, _ := emu.MemReadString(x3, 128); len(sign) > 0 && isPrintable(sign) {
-					captureKey(CapturedKey{
-						Value:     sign,
-						Source:    funcName + "[signature]",
-						Address:   emu.PC(),
-						KeyType:   "signature",
-						RiskLevel: "low",
-					})
+					// Encrypt signature too
+					encryptedSign := sign
+					if hipaa.SessionEncryptor != nil {
+						var err error
+						encryptedSign, err = hipaa.SessionEncryptor.EncryptString(sign)
+						if err != nil {
+							stubs.DefaultRegistry.Log("setter-error", funcName, fmt.Sprintf("signature encryption failed: %v", err))
+						} else {
+							captureKey(CapturedKey{
+								Value:     encryptedSign,
+								Source:    funcName + "[signature]",
+								Address:   emu.PC(),
+								KeyType:   "signature",
+								RiskLevel: "low",
+							})
+						}
+					}
 				}
 			}
 		}

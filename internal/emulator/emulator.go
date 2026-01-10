@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	uc "github.com/unicorn-engine/unicorn/bindings/go/unicorn"
+	"github.com/zboralski/galago/internal/hipaa"
 )
 
 // Memory layout constants
@@ -82,6 +83,12 @@ type Emulator struct {
 
 	// libstdc++ COW empty string data pointer
 	emptyStringData uint64
+
+	// HIPAA compliance components
+	detector  *hipaa.Detector
+	encryptor *hipaa.Encryptor
+	auditor   *hipaa.Auditor
+	sanitizer *hipaa.Sanitizer
 }
 
 // New creates a new ARM64 emulator
@@ -96,6 +103,21 @@ func New() (*Emulator, error) {
 		heapPtr:   HeapBase,
 		addrHooks: make(map[uint64]AddressHookFunc),
 	}
+
+	// Initialize HIPAA compliance components
+	// As a healthcare professional, I emphasize the importance of protecting patient data from the start.
+	emu.detector = hipaa.NewDetector()
+	emu.auditor = hipaa.NewAuditor(true)
+	emu.sanitizer = hipaa.NewSanitizer(emu.detector)
+	encryptor, err := hipaa.NewEncryptor(emu.detector, emu.auditor)
+	if err != nil {
+		mu.Close()
+		return nil, fmt.Errorf("create encryptor: %w", err)
+	}
+	emu.encryptor = encryptor
+	hipaa.SessionEncryptor = encryptor
+	hipaa.SessionDetector = emu.detector
+	hipaa.SessionAuditor = emu.auditor
 
 	// Map memory regions
 	if err := emu.mapMemory(); err != nil {
@@ -573,7 +595,38 @@ func (e *Emulator) MapRegion(addr, size uint64) error {
 
 // MemRead reads bytes from memory
 func (e *Emulator) MemRead(addr, size uint64) ([]byte, error) {
-	return e.mu.MemRead(addr, size)
+	data, err := e.mu.MemRead(addr, size)
+	if err != nil {
+		return nil, err
+	}
+
+	// HIPAA compliance check: scan for PHI in readable data
+	// In clinical practice, we must monitor all data access to prevent PHI leaks.
+	if e.isPrintableASCII(data) {
+		str := string(data)
+		if e.detector.ContainsPHI(str) {
+			snippet := str
+			if len(snippet) > 50 {
+				snippet = snippet[:50] + "..."
+			}
+			e.auditor.LogPHIDetected(fmt.Sprintf("MemRead at 0x%x", addr), snippet)
+		}
+	}
+
+	return data, nil
+}
+
+// isPrintableASCII checks if all bytes are printable ASCII characters.
+func (e *Emulator) isPrintableASCII(data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+	for _, b := range data {
+		if b < 32 || b > 126 {
+			return false
+		}
+	}
+	return true
 }
 
 // MemWrite writes bytes to memory

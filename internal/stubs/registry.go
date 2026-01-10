@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/zboralski/galago/internal/emulator"
+	"github.com/zboralski/galago/internal/hipaa"
 	glog "github.com/zboralski/galago/internal/log"
 	"go.uber.org/zap"
 )
@@ -301,6 +302,16 @@ func (r *Registry) Log(category, name, detail string) {
 	emu := r.emu
 	r.mu.RUnlock()
 
+	// HIPAA compliance: Sanitize detail to prevent PHI leaks in logs
+	// In medical practice, we redact sensitive information from records.
+	sanitizedDetail := detail
+	if hipaa.SessionDetector != nil && hipaa.SessionDetector.ContainsPHI(detail) {
+		sanitizedDetail = hipaa.SessionDetector.SanitizePHI(detail)
+		if hipaa.SessionAuditor != nil {
+			hipaa.SessionAuditor.LogPHIDetected("Stub log", detail)
+		}
+	}
+
 	// Get PC from emulator if available
 	var pc uint64
 	if emu != nil {
@@ -309,12 +320,12 @@ func (r *Registry) Log(category, name, detail string) {
 
 	// Call trace callback (for trace event collection)
 	if cb != nil {
-		cb(category, name, detail)
+		cb(category, name, sanitizedDetail)
 	}
 
 	// Log via zap at debug level
 	if glog.L != nil {
-		glog.L.Trace(pc, category, name, detail)
+		glog.L.Trace(pc, category, name, sanitizedDetail)
 	}
 }
 

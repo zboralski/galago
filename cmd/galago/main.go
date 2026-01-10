@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zboralski/galago/internal/emulator"
+	"github.com/zboralski/galago/internal/hipaa"
 	glog "github.com/zboralski/galago/internal/log"
 	"github.com/zboralski/galago/internal/stubs"
 	_ "github.com/zboralski/galago/internal/stubs/all"
@@ -577,7 +578,7 @@ func runTrace(cmd *cobra.Command, args []string) error {
 		if len(keys) > 0 {
 			fmt.Println("\n=== CAPTURED KEYS ===")
 			for _, k := range keys {
-				fmt.Printf("  [%s] %s: %q (from %s @ 0x%x)\n", k.RiskLevel, k.KeyType, k.Value, k.Source, k.Address)
+				fmt.Printf("  [%s] %s: %q (from %s @ 0x%x)\n", k.RiskLevel, k.KeyType, decryptKeyValue(k.Value), k.Source, k.Address)
 			}
 		} else {
 			fmt.Println("\nNo keys captured")
@@ -667,13 +668,13 @@ func isSetterSymbol(symName string, patterns []string) bool {
 	return false
 }
 
-func isPrintableKey(s string) bool {
-	for _, c := range s {
-		if c < 32 || c > 126 {
-			return false
+func decryptKeyValue(encrypted string) string {
+	if hipaa.SessionEncryptor != nil {
+		if decrypted, err := hipaa.SessionEncryptor.DecryptString(encrypted); err == nil {
+			return decrypted
 		}
 	}
-	return len(s) > 0
+	return encrypted // Return as is if decryption fails
 }
 
 func showInfo(cmd *cobra.Command, args []string) error {
