@@ -2,9 +2,9 @@
 
 Galago does not emulate Android.
 
-There is no Android runtime, no ART, no system services, no framework, no device model.
+It emulates ARM64 execution, not an operating system.
 
-Galago emulates only the minimum CPU and memory state needed to execute the target code path.
+Only the minimal CPU and memory state required to execute the target logic is provided. No ART, no Java, no system services. Just instructions running until the secret appears.
 
 ![Demo](demo/demo.gif)
 
