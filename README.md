@@ -1,21 +1,24 @@
 # Galago
 
-Galago extracts encryption keys from ARM64 Android native libraries through controlled emulation.
+Galago does not emulate Android.
+
+There is no Android runtime, no ART, no system services, no framework, no device model.
+
+Galago emulates only the minimum CPU and memory state needed to execute the target code path.
 
 ![Demo](demo/demo.gif)
 
-## How It Works
+It runs:
+- ARM64 instructions
+- inside a controlled, synthetic execution environment
+- with just enough memory and state to let the binary reach the point where secrets are derived
 
-The tool emulates ARM64 code using Unicorn Engine. It loads the ELF binary, sets up minimal stubs for libc and system calls, then runs from an entry point until it hits a key-setting function.
+Think of it as instruction-level execution, not platform emulation.
 
-Static disassembly fails when keys are:
-- Built in registers via MOVK instructions
-- Decrypted at runtime through XOR routines
-- Stored in object fields populated by constructors
+The goal is not to recreate the Android environment.
+The goal is to let the binary execute far enough to reveal runtime values.
 
-Galago runs the actual code. When execution reaches a setter function, it reads the arguments and captures the value. The emulator treats crashes as valid termination. Once the key is captured, the job is done.
-
-Most samples extract keys within 100-500 instructions.
+If a value is computed purely in native code, Galago can observe it without Android ever existing.
 
 ## Install
 
@@ -62,11 +65,6 @@ internal/
   ui/colorize/       Terminal output formatting
 ```
 
-The emulator configures minimal infrastructure:
-- Memory allocation via bump allocator
-- Mock objects with vtable redirection
-- Thread-local storage and stack canaries
-- RTTI structures for C++ compatibility
 
 ## Name
 
