@@ -2,23 +2,76 @@
 
 Galago does not emulate Android.
 
-It emulates ARM64 execution, not an operating system.
+Galago executes ARM64 instructions.
 
-Only the minimal CPU and memory state required to execute the target logic is provided. No ART, no Java, no system services. Just instructions running until the secret appears.
+- There is no operating system.
+- No runtime.
+- No platform reconstruction.
+
+Only the minimum CPU state and memory required for the target logic to run is provided. Instructions execute until the value of interest is derived or execution can no longer continue.
+
+If Android never becomes necessary, it never exists.
 
 ![Demo](demo/demo.gif)
 
-It runs:
-- ARM64 instructions
-- inside a controlled, synthetic execution environment
-- with just enough memory and state to let the binary reach the point where secrets are derived
+## How It Works
 
-Think of it as instruction-level execution, not platform emulation.
+Galago works by refusing to simulate what is not required.
 
-The goal is not to recreate the Android environment.
-The goal is to let the binary execute far enough to reveal runtime values.
+Most emulators start by recreating a world.
+An OS. A runtime. Services. APIs. Assumptions.
 
-If a value is computed purely in native code, Galago can observe it without Android ever existing.
+Galago starts by asking a narrower question:
+what must exist for these instructions to execute.
+
+Anything not required is never instantiated.
+
+The executable is not treated as an Android app.
+It is treated as a sequence of ARM64 instructions.
+
+Execution space is reduced to:
+
+- Registers.
+- Memory.
+- Control flow.
+- Minimal state required to avoid a fault.
+
+- No Java.
+- No ART.
+- No framework.
+- No system services.
+
+Those are not missing.
+They were never admissible.
+
+Instructions run until they can no longer continue or until the target value is derived.
+If a secret is computed entirely in native code, the environment above it is irrelevant.
+So it is removed.
+
+This is why Galago is not platform emulation.
+Platform emulation preserves context.
+Galago eliminates context.
+
+Android is metadata.
+Metadata is not evidence.
+So it does not participate.
+
+The binary executes in a synthetic environment that exists only to satisfy hard execution constraints.
+If a memory region is needed, it exists.
+If a syscall is never reached, it does not.
+
+There is no attempt to be faithful.
+Only to be sufficient.
+
+The result is collapse without reconstruction.
+
+Instead of rebuilding Android to reach a value,
+Galago strips execution down until only the path that can produce the value remains.
+
+Secrets appear not because the environment was recreated,
+but because everything that was unnecessary was cut away.
+
+Only what must execute, executes.
 
 ## Install
 
